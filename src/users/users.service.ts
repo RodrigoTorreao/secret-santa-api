@@ -43,4 +43,19 @@ export class UsersService{
         }
         return this.sanitize(existingUser)
     }
+    async findByEmailFull(email: string){
+        const existingUser = await this.prisma.client.user.findUnique({
+            where: {email}
+        })
+        if(!existingUser){
+            throw new NotFoundException('User not found')
+        }
+        return existingUser
+    }
+    async findById(id: string){
+        const existingUser = await this.prisma.client.user.findUnique({
+            where: {id}
+        })
+        return this.sanitize(existingUser) 
+    }
 }
