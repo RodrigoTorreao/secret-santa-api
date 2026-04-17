@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GroupStatus {
+  DRAFT
+  DRAWN
+}
+
+model User {
+  id            String        @id @default(uuid())
+  name          String
+  email         String        @unique
+  passwordHash  String
+  createdAt     DateTime      @default(now())
+
+  groups        Group[]       @relation("GroupCreator")
+  participants  Participant[]
+  givenDraws    DrawResult[]  @relation("Giver")
+  receivedDraws DrawResult[]  @relation("Receiver")
+}
+
+model Group {
+  id         String        @id @default(uuid())
+  name       String
+  status     GroupStatus  @default(DRAFT)
+  creatorId String
+  createdAt DateTime      @default(now())
+
+  creator     User          @relation("GroupCreator", fields: [creatorId], references: [id])
+  participants Participant[]
+  draws       DrawResult[]
+
+  @@index([creatorId])
+}
+
+model Participant {
+  id      String @id @default(uuid())
+  userId  String
+  groupId String
+
+  user  User  @relation(fields: [userId], references: [id])
+  group Group @relation(fields: [groupId], references: [id])
+
+  @@unique([userId, groupId])
+}
+
+model DrawResult {
+  id             String @id @default(uuid())
+  groupId        String
+  giverUserId    String
+  receiverUserId String
+
+  group    Group @relation(fields: [groupId], references: [id])
+  giver    User  @relation("Giver", fields: [giverUserId], references: [id])
+  receiver User  @relation("Receiver", fields: [receiverUserId], references: [id])
+
+  @@unique([groupId, giverUserId])
+  @@index([groupId])
+}
