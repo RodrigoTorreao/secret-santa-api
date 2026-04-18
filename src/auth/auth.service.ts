@@ -35,15 +35,16 @@ export class AuthService{
         }
 
         const accessToken = await this.jwtService.signAsync(payload)
+        const safeUser = this.sanitize(user)
 
         return{
             accessToken,
-            user
+            safeUser
         }
     }
 
     sanitize(user:any){
-        const {passordHash, ...safeUser} = user
+        const {passwordHash, ...safeUser} = user
         return safeUser
     }
 
