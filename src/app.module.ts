@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module'
 import { GroupsModule } from './groups/groups.module'
 import { UsersModule } from './users/users.module'
 import { DrawModule } from './draw/draw.module'
+import { QueueModule } from './infra/queue/queue.module'
 import { NotificationsModule } from './notifications/notifications.module'
 
 @Module({
@@ -13,7 +14,8 @@ import { NotificationsModule } from './notifications/notifications.module'
     GroupsModule,
     DrawModule,
     NotificationsModule,
-    DatabaseModule
+    DatabaseModule, 
+    QueueModule
   ],
 })
 export class AppModule {}
