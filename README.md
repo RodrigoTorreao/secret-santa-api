@@ -1,255 +1,206 @@
-# 🎁 Secret Santa API (NestJS)
+# 🎁 Secret Santa API
 
-> **Objetivo**: API backend orientada a produção para gerenciamento de sorteios de amigo secreto, construída com foco em **arquitetura, resiliência, observabilidade e boas práticas**, alinhada a um contexto de sistemas críticos (ex: crédito e risco).
-
-Este documento funciona como **plano técnico e guia de implementação**.
+API backend para gerenciamento de sorteios de **Amigo Secreto**, desenvolvida com foco em **arquitetura, regras de negócio, resiliência e qualidade de código**.
 
 ---
 
-## 📌 Escopo do MVP
+## 🧠 O que essa API resolve?
 
-### Incluído
-- Autenticação básica com JWT
-- Criação e gestão de grupos de sorteio
+- Criação de grupos de amigo secreto
 - Gerenciamento de participantes
-- Execução de sorteio com regras de negócio claras
-- Envio de emails de forma assíncrona
-- Observabilidade básica (logs estruturados)
-- Documentação via Swagger / OpenAPI
-- Ambiente dockerizado
+- Execução segura do sorteio
+- Garantia de que ninguém tira a si mesmo
+- Persistência do resultado do sorteio
+- Envio de notificações por email de forma assíncrona
+- Proteção contra execuções duplicadas
+- Isolamento de falhas externas (email não quebra o sorteio)
 
-### Fora do escopo (intencional)
-- Frontend
-- OAuth / Refresh Token
-- Lista de presentes
-- Painel administrativo
-- Deploy em cloud
+Tudo isso com autenticação, documentação e ambiente dockerizado.
 
 ---
 
-## 🧱 Stack Tecnológica
+## 🧩 Principais habilidades demonstradas
 
-- **Node.js + TypeScript**
-- **NestJS**
-- **PostgreSQL** (consistência e transações)
-- **Prisma ORM**
-- **BullMQ + Redis** (filas)
-- **Swagger / OpenAPI**
-- **Docker & Docker Compose**
-- **Jest** (testes)
+- Modelagem de domínio e regras de negócio
+- Uso de NestJS com arquitetura modular
+- Prisma ORM com transações e constraints reais
+- Autenticação JWT
+- Processamento assíncrono com BullMQ + Redis
+- Workers e filas com retry e backoff
+- Logs estruturados e correlation id
+- Testes unitários focados em comportamento
+- Docker para ambiente local previsível
+- Swagger/OpenAPI bem documentado
 
 ---
 
-## 🗂️ Arquitetura Geral
+## 🛠️ Stack utilizada
 
-- Monólito modular (preparado para futura extração de serviços)
-- Separação clara entre:
-  - Controllers (HTTP)
-  - Services (regras de negócio)
-  - Repositórios (acesso a dados)
-- Integrações externas isoladas por abstrações
+- Node.js + TypeScript
+- NestJS
+- PostgreSQL
+- Prisma ORM
+- BullMQ + Redis
+- Swagger / OpenAPI
+- Docker & Docker Compose
+- Jest
+
+---
+
+## 🗂️ Organização do projeto
+
+Estrutura:
 
 ```text
 src/
- ├── modules/
- │   ├── auth/
- │   ├── users/
- │   ├── groups/
- │   ├── draw/
- │   ├── notifications/
- │
- ├── shared/
+ ├── auth/
+ ├── users/
+ ├── groups/
+ ├── draw/
+ ├── notifications/
+ ├── infra/
  │   ├── database/
- │   ├── logger/
- │   ├── errors/
- │
- ├── jobs/
+ │   ├── queue/
+ │   └── logger/
  └── main.ts
 ```
-
 ---
 
-## 🗃️ Modelagem do Banco de Dados
+## 🗃️ Modelo de dados (resumo)
 
 ### User
-```text
-id            UUID (PK)
-name          string
-email         string (unique)
-passwordHash  string
-createdAt     timestamp
-```
+- id
+- name
+- email
+- passwordHash
 
-### Group (Sorteio)
-```text
-id         UUID (PK)
-name       string
-status     DRAFT | DRAWN
-creatorId UUID (FK -> User)
-createdAt timestamp
-```
+### Group
+- id
+- name
+- status (DRAFT | DRAWN)
+- creatorId
 
 ### Participant
-```text
-id       UUID (PK)
-userId   UUID (FK -> User)
-groupId  UUID (FK -> Group)
-```
+- userId
+- groupId
 
 ### DrawResult
-```text
-id             UUID (PK)
-groupId        UUID (FK -> Group)
-giverUserId    UUID (FK -> User)
-receiverUserId UUID (FK -> User)
-```
+- groupId
+- giverUserId
+- receiverUserId
 
-📌 **Decisão importante**:
-- Os pares do sorteio são **persistidos** (não calculados em memória)
-- Permite auditoria, idempotência e reenvio de notificações
+**Decisão importante**  
+O resultado do sorteio é persistido, não recalculado.  
+Isso garante idempotência, auditoria e reenvio de notificações.
 
 ---
 
-## 🔄 Estados e Regras de Negócio
+## 🎲 Sorteio (core do sistema)
 
-### Estados do Grupo
-- `DRAFT`: participantes podem ser alterados
-- `DRAWN`: sorteio realizado, grupo imutável
+O sorteio é a principal regra de negócio.
 
 ### Regras
-- Mínimo de **3 participantes** para sortear
-- Um grupo só pode ser sorteado **uma única vez**
-- Participantes não podem ser alterados após `DRAWN`
-
----
-
-## 🎲 Sorteio (Draw)
-
-### Características
-- Executado via endpoint protegido
-- Envolvido em **transação no banco**
-- Operação idempotente
+- Grupo precisa estar em DRAFT
+- Mínimo de participantes
+- Só o criador pode executar
+- Um grupo só pode ser sorteado uma vez
 
 ### Fluxo
-```text
+
 POST /groups/:id/draw
 
-1. Valida status = DRAFT
-2. Valida quantidade de participantes
+1. Valida permissões
+2. Valida estado do grupo
 3. Executa algoritmo de sorteio
-4. Persiste pares
+4. Persiste os pares (transação)
 5. Atualiza status para DRAWN
 6. Enfileira envio de emails
-```
 
-📌 **O sorteio não falha se o email falhar**
+Falha no envio de email **não invalida o sorteio**.
 
 ---
 
-## 📩 Envio de Email (Assíncrono)
+## 📩 Emails e processamento assíncrono
 
-### Estratégia
-- Emails são enviados via **fila**
-- Worker dedicado para envio
+- Envio via fila (BullMQ)
+- Worker dedicado
 - Retry automático
-- DLQ para falhas definitivas
+- Backoff
+- Falhas isoladas do fluxo principal
 
-```text
-Draw Completed
-   ↓
-Queue Email Job
-   ↓
-Worker
-   ↓
-Email Provider
-   ↓
-DLQ (se falhar)
-```
+Fluxo:
 
-### Garantias
-- Timeout configurado
-- Retry com limite
-- Falha isolada do fluxo principal
+Sorteio concluído  
+→ Job na fila  
+→ Worker  
+→ Email  
+→ Retry / DLQ se falhar  
 
 ---
 
 ## 🔍 Observabilidade
 
-### Logs
-- Logger estruturado (JSON)
-- CorrelationId por request
-
-### Eventos importantes logados
-- Sorteio realizado
-- Tentativas de envio de email
-- Falhas externas
+- Logs estruturados em JSON
+- Correlation ID por request
+- Logs de sorteio, envio de email e falhas externas
 
 ---
 
-## 📑 API (OpenAPI / Swagger)
+## 📑 Documentação da API
 
-- Swagger disponível em `/docs`
-- DTOs explícitos
-- Respostas de erro padronizadas
+Swagger disponível em:
 
-### Endpoints principais
-```http
-POST   /auth/register
-POST   /auth/login
+http://localhost:3000/docs
 
-POST   /groups
-GET    /groups
+Principais endpoints:
 
-POST   /groups/:id/participants
-DELETE /groups/:id/participants/:userId
-
-POST   /groups/:id/draw
-```
+POST /auth/login  
+POST /users/create-user  
+GET  /users/me  
+POST /groups  
+GET  /groups  
+POST /groups/:id/participants  
+POST /groups/:id/draw  
 
 ---
 
 ## 🧪 Testes
 
-### Cobertura mínima
+Cobertura focada em regras críticas:
+
 - Sorteio não executa duas vezes
 - Sorteio exige mínimo de participantes
-- Falha no email não invalida sorteio
+- Falha no email não quebra o fluxo
+- Algoritmo de sorteio validado isoladamente
 
 ---
 
-## 🐳 Docker
+## 🐳 Executando localmente
 
-### Serviços
-- API
-- PostgreSQL
-- Redis
-
-Executar localmente:
 ```bash
 docker-compose up -d
 ```
 
+Serviços:
+- API
+- PostgreSQL
+- Redis
+
 ---
 
-## ⚖️ Trade-offs Assumidos
+## ⚖️ Trade-offs assumidos
 
-- JWT simples (sem refresh)
-- Monólito ao invés de microserviços
+- JWT simples (sem refresh token)
+- Monólito modular
 - Observabilidade básica
 
-➡️ Escolhas feitas para **velocidade sem comprometer boas práticas**
-
 ---
 
-## 🚀 Próximos Passos (fora do escopo)
-- Versionamento de API
-- OpenTelemetry completo
-- Deploy em GCP
+## 🚀 Próximos passos
+
 - Rate limiting
-- Feature flags
+- Versionamento de API
+- OpenTelemetry
+- Deploy em cloud
 
 ---
-
-## 🧠 Nota Final
-
-Este projeto prioriza **clareza arquitetural, decisões explícitas e maturidade de backend**, simulando um sistema real de impacto, mesmo com domínio simples.

@@ -21,11 +21,7 @@ export class EmailWorker extends WorkerHost {
         )
 
         try {
-            await this.emailService.send({
-                to: job.data.to,
-                subject: job.data.subject,
-                body: job.data.body,
-            })
+            await this.emailService.send(job.data)
 
             this.logger.log(`Email job ${job.id} completed`)
         } catch (error) {
@@ -34,6 +30,7 @@ export class EmailWorker extends WorkerHost {
                 error instanceof Error ? error.stack : undefined,
             )
 
+            // 🔴 IMPORTANTE: relança o erro para BullMQ fazer retry
             throw error
         }
     }

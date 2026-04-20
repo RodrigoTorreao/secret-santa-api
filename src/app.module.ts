@@ -6,6 +6,7 @@ import { UsersModule } from './users/users.module'
 import { DrawModule } from './draw/draw.module'
 import { QueueModule } from './infra/queue/queue.module'
 import { NotificationsModule } from './notifications/notifications.module'
+import { LoggerModule } from './infra/logger/logger.module'
 
 @Module({
   imports: [
@@ -15,7 +16,9 @@ import { NotificationsModule } from './notifications/notifications.module'
     DrawModule,
     NotificationsModule,
     DatabaseModule, 
-    QueueModule
+    QueueModule,
+    LoggerModule,
+
   ],
 })
 export class AppModule {}
